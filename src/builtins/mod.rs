@@ -214,6 +214,7 @@ where
         crate::FrameworkError::NonCommandMessage { error, .. } => {
             tracing::warn!("error in non-command message handler: {}", error);
         }
+        #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
         crate::FrameworkError::__NonExhaustive(unreachable) => match unreachable {},
     }
 

@@ -52,6 +52,7 @@ pub struct PrefixContext<'a, U, E> {
     ) -> crate::BoxFuture<'_, Result<(), crate::FrameworkError<'_, U, E>>>,
 
     // #[non_exhaustive] forbids struct update syntax for ?? reason
+    #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
     #[doc(hidden)]
     pub __non_exhaustive: (),
 }
@@ -166,6 +167,7 @@ pub struct PrefixFrameworkOptions<U, E> {
     // /// single parameter
     // pub command_specific_help_commmand: Option<Command<U, E>>, */
     // #[non_exhaustive] forbids struct update syntax for ?? reason
+    #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
     #[doc(hidden)]
     pub __non_exhaustive: (),
 }
@@ -189,6 +191,7 @@ impl<U, E> Default for PrefixFrameworkOptions<U, E> {
             // help_when_mentioned: true,
             // help_commmand: None,
             // command_specific_help_commmand: None,
+            #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
             __non_exhaustive: (),
         }
     }

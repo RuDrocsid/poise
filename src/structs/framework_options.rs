@@ -76,6 +76,7 @@ pub struct FrameworkOptions<U, E> {
     /// None by default.
     pub initialized_team_roles: Option<Vec<serenity::TeamMemberRole>>,
     // #[non_exhaustive] forbids struct update syntax for ?? reason
+    #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
     #[doc(hidden)]
     pub __non_exhaustive: (),
 }
@@ -129,6 +130,7 @@ where
             owners: Default::default(),
             initialize_owners: true,
             initialized_team_roles: None,
+            #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
             __non_exhaustive: (),
         }
     }
