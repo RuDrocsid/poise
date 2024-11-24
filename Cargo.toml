@@ -19,11 +19,17 @@ derivative = "2.2.0"
 trim-in-place = "0.1.7"
 arc-swap = {version = "1.7.1"}
 
+#[dependencies.serenity]
+#default-features = false
+#features = ["builder", "gateway", "model", "utils", "collector", "framework"]
+#git = "https://github.com/serenity-rs/serenity"
+#branch = "next"
+
 [dependencies.serenity]
 default-features = false
 features = ["builder", "gateway", "model", "utils", "collector", "framework"]
-git = "https://github.com/serenity-rs/serenity"
-branch = "next"
+path = "../serenity"
+
 
 [dev-dependencies]
 # For the examples
