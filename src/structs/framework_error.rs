@@ -10,7 +10,7 @@ use crate::serenity_prelude as serenity;
 #[derivative(Debug)]
 pub enum FrameworkError<'a, U, E> {
     /// User code threw an error in generic event event handler
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     EventHandler {
         /// Error which was thrown in the event handler code
         error: E,
@@ -21,7 +21,7 @@ pub enum FrameworkError<'a, U, E> {
         framework: crate::FrameworkContext<'a, U, E>,
     },
     /// Error occurred during command execution
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     Command {
         /// Error which was thrown in the command code
         error: E,
@@ -38,7 +38,7 @@ pub enum FrameworkError<'a, U, E> {
     /// This feature is intended as a last-resort safeguard to gracefully print an error message to
     /// the user on a panic. Panics should only be thrown for bugs in the code, don't use this for
     /// normal errors!
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     CommandPanic {
         /// Panic payload which was thrown in the command code
         ///
@@ -52,7 +52,7 @@ pub enum FrameworkError<'a, U, E> {
         ctx: crate::Context<'a, U, E>,
     },
     /// A command argument failed to parse from the Discord message or interaction content
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     ArgumentParse {
         /// Error which was thrown by the parameter type's parsing routine
         error: Box<dyn std::error::Error + Send + Sync>,
@@ -66,7 +66,7 @@ pub enum FrameworkError<'a, U, E> {
     ///
     /// Most often the result of the bot not having registered the command in Discord, so Discord
     /// stores an outdated version of the command and its parameters.
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     CommandStructureMismatch {
         /// Developer-readable description of the type mismatch
         description: &'static str,
@@ -74,7 +74,7 @@ pub enum FrameworkError<'a, U, E> {
         ctx: crate::ApplicationContext<'a, U, E>,
     },
     /// Command was invoked before its cooldown expired
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     CooldownHit {
         /// Time until the command may be invoked for the next time in the given context
         remaining_cooldown: std::time::Duration,
@@ -83,7 +83,7 @@ pub enum FrameworkError<'a, U, E> {
     },
     /// Command was invoked but the bot is lacking the permissions specified in
     /// [`crate::Command::required_bot_permissions`]
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     MissingBotPermissions {
         /// Which permissions in particular the bot is lacking for this command
         missing_permissions: serenity::Permissions,
@@ -92,7 +92,7 @@ pub enum FrameworkError<'a, U, E> {
     },
     /// Command was invoked but the user is lacking the permissions specified in
     /// [`crate::Command::required_permissions`]
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     MissingUserPermissions {
         /// List of permissions that the user is lacking. May be None if retrieving the user's
         /// permissions failed
@@ -108,31 +108,31 @@ pub enum FrameworkError<'a, U, E> {
         ctx: crate::Context<'a, U, E>,
     },
     /// A non-owner tried to invoke an owners-only command
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     NotAnOwner {
         /// General context
         ctx: crate::Context<'a, U, E>,
     },
     /// Command was invoked but the channel was a DM channel
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     GuildOnly {
         /// General context
         ctx: crate::Context<'a, U, E>,
     },
     /// Command was invoked but the channel was a non-DM channel
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     DmOnly {
         /// General context
         ctx: crate::Context<'a, U, E>,
     },
     /// Command was invoked but the channel wasn't a NSFW channel
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     NsfwOnly {
         /// General context
         ctx: crate::Context<'a, U, E>,
     },
     /// Provided pre-command check either errored, or returned false, so command execution aborted
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     CommandCheckFailed {
         /// If execution wasn't aborted because of an error but because it successfully returned
         /// false, this field is None
@@ -142,7 +142,7 @@ pub enum FrameworkError<'a, U, E> {
     },
     /// [`crate::PrefixFrameworkOptions::dynamic_prefix`] or
     /// [`crate::PrefixFrameworkOptions::stripped_dynamic_prefix`] returned an error
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     DynamicPrefix {
         /// Error which was thrown in the dynamic prefix code
         error: E,
@@ -153,7 +153,7 @@ pub enum FrameworkError<'a, U, E> {
         msg: &'a serenity::Message,
     },
     /// A message had the correct prefix but the following string was not a recognized command
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     UnknownCommand {
         /// The message in question
         msg: &'a serenity::Message,
@@ -173,7 +173,7 @@ pub enum FrameworkError<'a, U, E> {
         trigger: crate::MessageDispatchTrigger,
     },
     /// The command name from the interaction is unrecognized
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     UnknownInteraction {
         /// Framework context
         #[derivative(Debug = "ignore")]
@@ -182,7 +182,7 @@ pub enum FrameworkError<'a, U, E> {
         interaction: &'a serenity::CommandInteraction,
     },
     /// An error occurred in [`crate::PrefixFrameworkOptions::non_command_message`]
-    #[non_exhaustive]
+    #[cfg_attr(any(not(feature = "unstable_exhaustive_types"), doc), non_exhaustive)]
     NonCommandMessage {
         /// The error thrown by user code
         error: E,
@@ -193,6 +193,7 @@ pub enum FrameworkError<'a, U, E> {
         msg: &'a serenity::Message,
     },
     // #[non_exhaustive] forbids struct update syntax for ?? reason
+    #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
     #[doc(hidden)]
     __NonExhaustive(std::convert::Infallible),
 }
@@ -220,6 +221,7 @@ impl<'a, U: Send + Sync + 'static, E> FrameworkError<'a, U, E> {
             Self::UnknownCommand { framework, .. } => framework.serenity_context,
             Self::UnknownInteraction { framework, .. } => framework.serenity_context,
             Self::NonCommandMessage { framework, .. } => framework.serenity_context,
+            #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
             Self::__NonExhaustive(unreachable) => match unreachable {},
         }
     }
@@ -246,6 +248,7 @@ impl<'a, U: Send + Sync + 'static, E> FrameworkError<'a, U, E> {
             | Self::UnknownInteraction { .. }
             | Self::NonCommandMessage { .. }
             | Self::DynamicPrefix { .. } => return None,
+            #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
             Self::__NonExhaustive(unreachable) => match unreachable {},
         })
     }
@@ -410,6 +413,7 @@ impl<U: Send + Sync + 'static, E: std::fmt::Display> std::fmt::Display
                     msg.channel_id, msg.id
                 )
             }
+            #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
             Self::__NonExhaustive(unreachable) => match *unreachable {},
         }
     }
@@ -441,6 +445,7 @@ where
             Self::UnknownCommand { .. } => None,
             Self::UnknownInteraction { .. } => None,
             Self::NonCommandMessage { error, .. } => Some(error),
+            #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
             Self::__NonExhaustive(unreachable) => match *unreachable {},
         }
     }
