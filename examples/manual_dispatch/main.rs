@@ -4,7 +4,7 @@
 //! Note: this example configures no designated prefix. Mention the bot as a prefix instead. For
 //! that to work, please adjust the bot ID below to your bot, for the mention parsing to work.
 
-use poise::serenity_prelude as serenity;
+use poise::{serenity_prelude as serenity, CommandStorage};
 
 type Error = serenity::Error;
 
@@ -32,9 +32,12 @@ impl serenity::EventHandler for Handler {
         let invocation_data = tokio::sync::Mutex::new(Box::new(()) as _);
         let trigger = poise::MessageDispatchTrigger::MessageCreate;
         let mut parent_commands = Vec::new();
+        let global_lock = framework_data.options.commands.deref_owned();
 
         let res = poise::dispatch_message(
             framework_data,
+            &global_lock,
+            None,
             &new_message,
             trigger,
             &invocation_data,
@@ -53,14 +56,15 @@ impl serenity::EventHandler for Handler {
 async fn main() -> Result<(), Error> {
     let token = serenity::Token::from_env("DISCORD_TOKEN").unwrap();
     let intents = serenity::GatewayIntents::non_privileged();
-    let mut handler = Handler {
+    let mut commands: CommandStorage<_, _> = vec![ping()].into();
+    commands.set_qualified_names(None); // some setup
+    let handler = Handler {
         options: poise::FrameworkOptions {
-            commands: vec![ping()],
+            commands: commands.into(),
             ..Default::default()
         },
         shard_manager: std::sync::Mutex::new(None),
     };
-    poise::set_qualified_names(&mut handler.options.commands); // some setup
 
     let handler = std::sync::Arc::new(handler);
     let mut client = serenity::Client::builder(token, intents)

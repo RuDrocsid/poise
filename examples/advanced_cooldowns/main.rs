@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use poise::serenity_prelude as serenity;
 
 type Data = (); // User data, which is stored and accessible in all command invocations
@@ -7,7 +8,7 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 #[poise::command(slash_command, prefix_command)]
 async fn dynamic_cooldowns(ctx: Context<'_>) -> Result<(), Error> {
     {
-        let mut cooldown_tracker = ctx.command().cooldowns.lock().unwrap();
+        let mut cooldown_tracker = ctx.command().cooldowns.lock().await;
 
         // You can change the cooldown duration depending on the message author, for example
         let mut cooldown_durations = poise::CooldownConfig::default();
@@ -30,7 +31,7 @@ async fn dynamic_cooldowns(ctx: Context<'_>) -> Result<(), Error> {
 #[poise::command(prefix_command, owners_only)]
 async fn register_commands(ctx: Context<'_>) -> Result<(), Error> {
     let commands = &ctx.framework().options().commands;
-    poise::builtins::register_globally(ctx.http(), commands).await?;
+    poise::builtins::register_globally(ctx.http(), commands.deref_owned().deref()).await?;
 
     ctx.say("Successfully registered slash commands!").await?;
     Ok(())
@@ -41,7 +42,7 @@ async fn main() {
     let token = serenity::Token::from_env("DISCORD_TOKEN").unwrap();
 
     let options = poise::FrameworkOptions {
-        commands: vec![register_commands(), dynamic_cooldowns()],
+        commands: vec![register_commands(), dynamic_cooldowns()].into(),
         // This is important! Or else, the command will be marked as invoked before our custom
         // cooldown code has run - even if the command ends up not running!
         manual_cooldowns: true,

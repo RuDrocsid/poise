@@ -1,10 +1,11 @@
 //! Holds application command definition structs.
 
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
+use std::sync::Arc;
+use arc_swap::Guard;
+use crate::{serenity_prelude as serenity, BoxFuture, CommandOverride, CommandStorage};
 
-use crate::{serenity_prelude as serenity, BoxFuture};
-
-use super::{CowStr, CowVec};
+use super::{CowStr, CowVec, Cow};
 
 /// Specifies if the current invokation is from a Command or Autocomplete.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -44,6 +45,18 @@ pub struct ApplicationContext<'a, U, E> {
     pub command: &'a crate::Command<U, E>,
     /// Custom user data carried across a single command invocation
     pub invocation_data: &'a tokio::sync::Mutex<Box<dyn std::any::Any + Send + Sync>>,
+    /// This lock provides an immutable view into the global commands while a command is dispatched.
+    ///
+    /// This lock will only exist if the dispatched event is a command.
+    ///
+    /// You can always get a lock manually if none is provided.
+    pub global_commands: Option<&'a Guard<Arc<CommandStorage<U, E>>>>,
+    /// This lock provides an immutable view into the guild commands while a command is dispatched.
+    ///
+    /// This lock will only exist if the dispatched command was triggered in a guild.
+    ///
+    /// You can always get a lock manually if none is provided.
+    pub guild_commands: Option<(&'a Guard<Arc<CommandStorage<U, E>>>, &'a Guard<Arc<HashMap<String, CommandOverride>>>)>,
     // #[non_exhaustive] forbids struct update syntax for ?? reason
     #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]
     #[doc(hidden)]
@@ -123,8 +136,8 @@ pub struct CommandParameterChoice {
 }
 
 /// A single parameter of a [`crate::Command`]
-#[derive(Clone, derivative::Derivative)]
-#[derivative(Debug(bound = ""))]
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""), Debug(bound = ""))]
 pub struct CommandParameter<U, E> {
     /// Name of this command parameter
     pub name: CowStr,

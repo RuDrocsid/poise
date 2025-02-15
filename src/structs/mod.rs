@@ -21,6 +21,9 @@ pub use slash::*;
 mod framework_error;
 pub use framework_error::*;
 
+mod command_storage;
+pub use command_storage::*;
+
 /// A type alias for `&'static str` or `String`
 pub(crate) type CowStr = Cow<'static, str>;
 

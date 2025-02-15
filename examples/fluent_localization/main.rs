@@ -2,7 +2,7 @@ mod translation;
 
 use std::sync::Arc;
 
-use poise::serenity_prelude as serenity;
+use poise::{serenity_prelude as serenity, CommandStorage};
 use translation::tr;
 
 pub struct Data {
@@ -62,7 +62,7 @@ async fn register(ctx: Context<'_>) -> Result<(), Error> {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let mut commands = vec![welcome(), info(), register()];
+    let mut commands: CommandStorage<_, _> = vec![welcome(), info(), register()].into();
     let translations = translation::read_ftl().expect("failed to read translation files");
 
     // We leak the translations so we can easily copy around `&'static str`s, to the downside
@@ -76,7 +76,7 @@ async fn main() {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands,
+            commands: commands.into(),
             ..Default::default()
         })
         .build();

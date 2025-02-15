@@ -152,11 +152,11 @@ subcommands):
 # type Error = Box<dyn std::error::Error + Send + Sync>;
 # type Context<'a> = poise::Context<'a, (), Error>;
 # #[poise::command(prefix_command)]
-# pub async fn parent(ctx: Context<'_>, arg: String) -> Result<(), Error> { Ok(()) }
+# pub async fn parent(_: Context<'_>, _arg: String) -> Result<(), Error> { Ok(()) }
 let options = poise::FrameworkOptions {
     commands: vec![
         parent(),
-    ],
+    ].into(),
     ..Default::default()
 };
 ```
@@ -216,9 +216,9 @@ async fn error_handler(error: poise::FrameworkError<'_, Data, Error>) {
 # type Error = Box<dyn std::error::Error + Send + Sync>;
 # type Context<'a> = poise::Context<'a, (), Error>;
 # async fn my_error_function(_: poise::FrameworkError<'_, (), Error>) {}
-# #[poise::command(prefix_command)] async fn command1(ctx: Context<'_>) -> Result<(), Error> { Ok(()) }
-# #[poise::command(prefix_command)] async fn command2(ctx: Context<'_>) -> Result<(), Error> { Ok(()) }
-# #[poise::command(prefix_command)] async fn command3(ctx: Context<'_>) -> Result<(), Error> { Ok(()) }
+# #[poise::command(prefix_command)] async fn command1(_: Context<'_>) -> Result<(), Error> { Ok(()) }
+# #[poise::command(prefix_command)] async fn command2(_: Context<'_>) -> Result<(), Error> { Ok(()) }
+# #[poise::command(prefix_command)] async fn command3(_: Context<'_>) -> Result<(), Error> { Ok(()) }
 use poise::serenity_prelude as serenity;
 
 # async {
@@ -245,7 +245,7 @@ let framework = poise::Framework::builder()
                 // [override fields here]
                 ..command3()
             }
-        ],
+        ].into(),
         ..Default::default()
     }).build();
 

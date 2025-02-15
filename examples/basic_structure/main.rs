@@ -8,6 +8,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+use std::ops::Deref;
 
 // Types used by all command functions
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -37,7 +38,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 #[poise::command(prefix_command, owners_only)]
 async fn register_commands(ctx: Context<'_>) -> Result<(), Error> {
     let commands = &ctx.framework().options().commands;
-    poise::builtins::register_globally(ctx.http(), commands).await?;
+    poise::builtins::register_globally(ctx.http(), commands.deref_owned().deref()).await?;
 
     ctx.say("Successfully registered slash commands!").await?;
     Ok(())
@@ -50,7 +51,7 @@ async fn main() {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {
-        commands: vec![register_commands(), commands::vote(), commands::getvotes()],
+        commands: vec![register_commands(), commands::vote(), commands::getvotes()].into(),
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("~".into()),
             edit_tracker: Some(Arc::new(poise::EditTracker::for_timespan(

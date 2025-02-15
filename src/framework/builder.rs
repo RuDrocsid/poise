@@ -1,5 +1,8 @@
 //! A builder struct that allows easy and readable creation of a [`crate::Framework`]
 
+use std::ops::{Deref};
+use std::sync::Arc;
+
 /// A builder to configure a framework.
 ///
 /// If [`Self::options`] is missing, the builder will panic on start.
@@ -50,7 +53,9 @@ impl<U, E> FrameworkBuilder<U, E> {
         let mut options = self.options.expect("No framework options provided");
 
         // Build framework options by concatenating user-set options with commands and owners
-        options.commands.extend(self.commands);
+        let mut commands = (*options.commands.deref_owned().deref().deref()).clone();
+        commands.extend(self.commands);
+        options.commands.get_raw_arc().store(Arc::new(commands.into()));
         options.initialize_owners = self.initialize_owners;
 
         // Create framework with specified settings

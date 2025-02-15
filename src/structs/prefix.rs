@@ -1,8 +1,10 @@
 //! Holds prefix-command definition structs.
 
 use std::borrow::Cow;
-
-use crate::{serenity_prelude as serenity, BoxFuture};
+use std::collections::HashMap;
+use std::sync::Arc;
+use arc_swap::Guard;
+use crate::{serenity_prelude as serenity, BoxFuture, CommandOverride, CommandStorage};
 
 /// The event that triggered a prefix command execution
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -50,6 +52,18 @@ pub struct PrefixContext<'a, U, E> {
     pub action: fn(
         PrefixContext<'_, U, E>,
     ) -> crate::BoxFuture<'_, Result<(), crate::FrameworkError<'_, U, E>>>,
+    /// This lock provides an immutable view into the global commands while a command is dispatched.
+    ///
+    /// This lock will only exist if the dispatched event is a command.
+    ///
+    /// You can always get a lock manually if none is provided.
+    pub global_commands: Option<&'a Guard<Arc<CommandStorage<U, E>>>>,
+    /// This lock provides an immutable view into the guild commands while a command is dispatched.
+    ///
+    /// This lock will only exist if the dispatched command was triggered in a guild.
+    ///
+    /// You can always get a lock manually if none is provided.
+    pub guild_commands: Option<(&'a Guard<Arc<CommandStorage<U, E>>>, &'a Guard<Arc<HashMap<String, CommandOverride>>>)>,
 
     // #[non_exhaustive] forbids struct update syntax for ?? reason
     #[cfg(any(not(feature = "unstable_exhaustive_types"), doc))]

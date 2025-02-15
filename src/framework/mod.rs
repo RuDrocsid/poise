@@ -1,7 +1,7 @@
 //! The central Framework struct that ties everything together.
 
-use std::{borrow::Cow, sync::Arc};
-
+use std::{sync::Arc};
+use std::ops::Deref;
 pub use builder::*;
 
 use crate::serenity_prelude::{self as serenity, TeamMemberRole};
@@ -94,7 +94,9 @@ impl<U, E> Drop for Framework<U, E> {
 #[serenity::async_trait]
 impl<U: Send + Sync + 'static, E: Send + Sync> serenity::Framework for Framework<U, E> {
     async fn init(&mut self, client: &serenity::Client) {
-        set_qualified_names(&mut self.options.commands);
+        let mut commands = (*self.options.commands.deref_owned().deref().deref()).clone();
+        commands.set_qualified_names(None);
+        self.options.commands.get_raw_arc().store(commands.into());
 
         message_content_intent_sanity_check(
             &self.options.prefix_options,
@@ -161,20 +163,6 @@ async fn raw_dispatch_event<U, E>(
         shard_manager: framework.shard_manager(),
     };
     crate::dispatch_event(framework, event).await;
-}
-
-/// Traverses commands recursively and sets [`crate::Command::qualified_name`] to its actual value
-pub fn set_qualified_names<U, E>(commands: &mut [crate::Command<U, E>]) {
-    /// Fills in `qualified_name` fields by appending command name to the parent command name
-    fn set_subcommand_qualified_names<U, E>(parents: &str, commands: &mut [crate::Command<U, E>]) {
-        for cmd in commands {
-            cmd.qualified_name = Cow::Owned(format!("{} {}", parents, cmd.name));
-            set_subcommand_qualified_names(&cmd.qualified_name, &mut cmd.subcommands);
-        }
-    }
-    for command in commands {
-        set_subcommand_qualified_names(&command.name, &mut command.subcommands);
-    }
 }
 
 /// Prints a warning on stderr if a prefix is configured but `MESSAGE_CONTENT` is not set

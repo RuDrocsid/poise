@@ -42,6 +42,10 @@ pub fn wrap_option_to_string<T: quote::ToTokens>(literal: Option<T>) -> syn::Exp
     wrap_option_and_map(literal, cowstr_path)
 }
 
+pub fn wrap_option_to_normal_string<T: quote::ToTokens>(literal: Option<T>) -> syn::Expr {
+    wrap_option_and_map(literal, quote::quote!(String::from))
+}
+
 /// Syn Fold to make all lifetimes 'static. Used to access trait items of a type without having its
 /// concrete lifetime available
 pub struct AllLifetimesToStatic;

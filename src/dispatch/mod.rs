@@ -5,11 +5,14 @@ mod permissions;
 mod prefix;
 mod slash;
 
+use std::collections::HashMap;
+use std::sync::Arc;
+use arc_swap::Guard;
 pub use common::*;
 pub use prefix::*;
 pub use slash::*;
 
-use crate::serenity_prelude as serenity;
+use crate::{serenity_prelude as serenity, CommandOverride, CommandStorage};
 
 /// A view into data stored by [`crate::Framework`]
 pub struct FrameworkContext<'a, U, E> {
@@ -64,6 +67,24 @@ impl<'a, U: Send + Sync + 'static, E> FrameworkContext<'a, U, E> {
     }
 }
 
+async fn get_guild_commands<'a, U: Send + Sync, E>(
+    framework: &'a crate::FrameworkContext<'a, U, E>,
+    guild_id: &Option<serenity::GuildId>,
+) -> Option<(Guard<Arc<CommandStorage<U, E>>>, Guard<Arc<HashMap<String, CommandOverride>>>)> {
+    if let Some(gid) = guild_id {
+        let lock = framework.options.guild_commands.read().await;
+        return lock.get(gid).map(|s| (s.0.deref_owned(), s.1.deref_owned()));
+    }
+    None
+}
+// Guard<Arc<CommandStorage<U, E>>>
+fn deref_optional_tuple<T, U>(lock: &Option<(T, U)>) -> Option<(&T, &U)> {
+    match lock {
+        None => None,
+        Some((t, u)) => Some((t, u)),
+    }
+}
+
 /// Central event handling function of this library
 pub async fn dispatch_event<U: Send + Sync + 'static, E>(
     framework: crate::FrameworkContext<'_, U, E>,
@@ -73,11 +94,14 @@ pub async fn dispatch_event<U: Send + Sync + 'static, E>(
         serenity::FullEvent::Message { new_message } => {
             let invocation_data = tokio::sync::Mutex::new(Box::new(()) as _);
             let mut parent_commands = Vec::new();
-            let trigger = crate::MessageDispatchTrigger::MessageCreate;
+            let commands_lock = framework.options().commands.deref_owned();
+            let guild_commands_opt = get_guild_commands(&framework, &new_message.guild_id).await;
             if let Err(error) = prefix::dispatch_message(
                 framework,
+                &commands_lock,
+                deref_optional_tuple(&guild_commands_opt),
                 new_message,
-                trigger,
+                crate::MessageDispatchTrigger::MessageCreate,
                 &invocation_data,
                 &mut parent_commands,
             )
@@ -99,12 +123,16 @@ pub async fn dispatch_event<U: Send + Sync + 'static, E>(
                 if let Some(previously_tracked) = result {
                     let invocation_data = tokio::sync::Mutex::new(Box::new(()) as _);
                     let mut parent_commands = Vec::new();
+                    let commands_lock = framework.options().commands.deref_owned();
+                    let guild_commands_opt = get_guild_commands(&framework, &event.message.guild_id).await;
                     let trigger = match previously_tracked {
                         true => crate::MessageDispatchTrigger::MessageEdit,
                         false => crate::MessageDispatchTrigger::MessageEditFromInvalid,
                     };
                     if let Err(error) = prefix::dispatch_message(
                         framework,
+                        &commands_lock,
+                        deref_optional_tuple(&guild_commands_opt),
                         &event.message,
                         trigger,
                         &invocation_data,
@@ -140,8 +168,12 @@ pub async fn dispatch_event<U: Send + Sync + 'static, E>(
         } => {
             let invocation_data = tokio::sync::Mutex::new(Box::new(()) as _);
             let mut parent_commands = Vec::new();
+            let commands_lock = framework.options().commands.deref_owned();
+            let guild_commands_opt = get_guild_commands(&framework, &interaction.guild_id).await;
             if let Err(error) = slash::dispatch_interaction(
                 framework,
+                &commands_lock,
+                deref_optional_tuple(&guild_commands_opt),
                 interaction,
                 &std::sync::atomic::AtomicBool::new(false),
                 &invocation_data,
@@ -158,8 +190,12 @@ pub async fn dispatch_event<U: Send + Sync + 'static, E>(
         } => {
             let invocation_data = tokio::sync::Mutex::new(Box::new(()) as _);
             let mut parent_commands = Vec::new();
+            let commands_lock = framework.options().commands.deref_owned();
+            let guild_commands_opt = get_guild_commands(&framework, &interaction.guild_id).await;
             if let Err(error) = slash::dispatch_autocomplete(
                 framework,
+                &commands_lock,
+                deref_optional_tuple(&guild_commands_opt),
                 interaction,
                 &std::sync::atomic::AtomicBool::new(false),
                 &invocation_data,

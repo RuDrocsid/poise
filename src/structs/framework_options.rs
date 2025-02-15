@@ -1,13 +1,19 @@
 //! Just contains `FrameworkOptions`
 
-use crate::{serenity_prelude as serenity, BoxFuture};
+use std::collections::HashMap;
+use std::ops::Deref;
+use tokio::sync::RwLock;
+use serenity::all::GuildId;
+use crate::{serenity_prelude as serenity, BoxFuture, CommandOverride, CommandStorage, UpdateableArcSwapArc, UpdateableCommandStorageArc};
 
 /// Framework configuration
 #[derive(derivative::Derivative)]
 #[derivative(Debug(bound = ""))]
 pub struct FrameworkOptions<U, E> {
     /// List of commands in the framework
-    pub commands: Vec<crate::Command<U, E>>,
+    pub commands: UpdateableCommandStorageArc<U, E>,
+    /// List of guild specific commands in the framework
+    pub guild_commands: RwLock<HashMap<GuildId, (UpdateableCommandStorageArc<U, E>, UpdateableArcSwapArc<HashMap<String, CommandOverride>>)>>,
     /// Provide a callback to be invoked when any user code yields an error.
     #[derivative(Debug = "ignore")]
     pub on_error: fn(crate::FrameworkError<'_, U, E>) -> BoxFuture<'_, ()>,
@@ -90,7 +96,9 @@ impl<U, E> FrameworkOptions<U, E> {
         meta_builder: impl FnOnce(&mut crate::Command<U, E>) -> &mut crate::Command<U, E> + 'static,
     ) {
         meta_builder(&mut command);
-        self.commands.push(command);
+        let mut commands = (*self.commands.deref_owned().deref().deref()).clone();
+        commands.push(command);
+        self.commands.get_raw_arc().store(commands.into());
     }
 }
 
@@ -102,7 +110,8 @@ where
     fn default() -> Self {
         #[allow(deprecated)] // we need to set the listener field
         Self {
-            commands: Vec::new(),
+            commands: CommandStorage::new_empty().into(),
+            guild_commands: RwLock::new(HashMap::default()),
             on_error: |error| {
                 Box::pin(async move {
                     if let Err(e) = crate::builtins::on_error(error).await {
