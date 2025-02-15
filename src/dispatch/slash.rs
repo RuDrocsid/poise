@@ -1,18 +1,60 @@
 //! Dispatches interactions onto framework commands
 
-use crate::serenity_prelude as serenity;
+use std::collections::HashMap;
+use std::ops::Deref;
+use std::sync::Arc;
+use arc_swap::{ArcSwap, Guard};
+use serenity::all::CommandType;
+use crate::{serenity_prelude as serenity, CommandOverride, CommandStorage, ContextMenuCommandAction};
 
 /// Check if the interaction with the given name and arguments matches any framework command
 fn find_matching_command<'a, 'b, U, E>(
     interaction_name: &str,
+    command_kind: serenity::CommandType,
     interaction_options: &'b [serenity::ResolvedOption<'b>],
-    commands: &'a [crate::Command<U, E>],
+    commands: &'a CommandStorage<U, E>, 
+    overrides: &HashMap<String, CommandOverride>,
     parent_commands: &mut Vec<&'a crate::Command<U, E>>,
 ) -> Option<(&'a crate::Command<U, E>, &'b [serenity::ResolvedOption<'b>])> {
+    let default_override = CommandOverride::default();
+
+    if matches!(command_kind, CommandType::PrimaryEntryPoint) {
+        return None;
+    }
+
+    // search for context menu commands recursively; we can not split the name in this case
+    if matches!(command_kind, CommandType::User) || matches!(command_kind, CommandType::Message) { 
+        let (user, message) = commands.get_context_commands();
+        if matches!(command_kind, CommandType::User) {
+            for command in user {
+                if interaction_name == command.context_menu_name.as_ref().unwrap_or(&command.name) {
+                    return Some((command, interaction_options));
+                }
+            }
+            return None;
+        } 
+        
+        if matches!(command_kind, CommandType::Message) {
+            for command in message {
+                if interaction_name == command.context_menu_name.as_ref().unwrap_or(&command.name) {
+                    return Some((command, interaction_options));
+                }
+            }
+        }
+    }   
+    
     commands.iter().find_map(|cmd| {
-        if interaction_name != cmd.name
-            && Some(interaction_name) != cmd.context_menu_name.as_deref()
-        {
+        let command_override = cmd
+            .command_id
+            .as_ref()
+            .and_then(|id| overrides.get(id))
+            .unwrap_or(&default_override);
+        if command_override.disabled || command_override.group_disabled {
+            return None;
+        }
+        
+        // do not match a slash command, when context menu command was executed and vice versa
+        if cmd.slash_action.is_none() || interaction_name != cmd.name { 
             return None;
         }
 
@@ -26,7 +68,7 @@ fn find_matching_command<'a, 'b, U, E>(
                 })
         {
             parent_commands.push(cmd);
-            find_matching_command(sub_name, sub_interaction, &cmd.subcommands, parent_commands)
+            find_matching_command(sub_name, command_kind, sub_interaction, &cmd.subcommands, overrides, parent_commands)
         } else {
             Some((cmd, interaction_options))
         }
@@ -40,6 +82,8 @@ fn find_matching_command<'a, 'b, U, E>(
 #[allow(clippy::too_many_arguments)] // We need to pass them all in to create Context.
 fn extract_command<'a, U, E>(
     framework: crate::FrameworkContext<'a, U, E>,
+    global_commands: &'a Guard<Arc<CommandStorage<U, E>>>,
+    guild_commands: Option<(&'a Guard<Arc<CommandStorage<U, E>>>, &'a Guard<Arc<HashMap<String, CommandOverride>>>)>,
     interaction: &'a serenity::CommandInteraction,
     interaction_type: crate::CommandInteractionType,
     has_sent_initial_response: &'a std::sync::atomic::AtomicBool,
@@ -47,17 +91,32 @@ fn extract_command<'a, U, E>(
     options: &'a [serenity::ResolvedOption<'a>],
     parent_commands: &'a mut Vec<&'a crate::Command<U, E>>,
 ) -> Result<crate::ApplicationContext<'a, U, E>, crate::FrameworkError<'a, U, E>> {
-    let search_result = find_matching_command(
-        &interaction.data.name,
-        options,
-        &framework.options.commands,
-        parent_commands,
-    );
-    let (command, leaf_interaction_options) =
-        search_result.ok_or(crate::FrameworkError::UnknownInteraction {
+    let empty_map = ArcSwap::new(Arc::new(HashMap::new())).load();
+
+    // if the called command is registered in a guild, search in guild commands; 
+    // else search in global commands
+    let cmds = if interaction.data.guild_id.is_some() { 
+        guild_commands
+    } else {
+        Some((global_commands, &empty_map))
+    };
+    
+    let (command, leaf_interaction_options) = cmds
+        .map(|(cmds, overrides)| {
+            find_matching_command(
+                &interaction.data.name,
+                interaction.data.kind,
+                options,
+                cmds.deref(),
+                overrides,
+                parent_commands,
+            )
+        })
+        .flatten()
+        .ok_or(crate::FrameworkError::UnknownInteraction {
             framework,
             interaction,
-        })?;
+    })?;
 
     Ok(crate::ApplicationContext {
         framework,
@@ -68,6 +127,8 @@ fn extract_command<'a, U, E>(
         parent_commands,
         has_sent_initial_response,
         invocation_data,
+        global_commands: Some(global_commands),
+        guild_commands,
         __non_exhaustive: (),
     })
 }
@@ -76,6 +137,8 @@ fn extract_command<'a, U, E>(
 #[allow(clippy::too_many_arguments)] // We need to pass them all in to create Context.
 pub async fn extract_command_and_run_checks<'a, U: Send + Sync + 'static, E>(
     framework: crate::FrameworkContext<'a, U, E>,
+    global_commands: &'a Guard<Arc<CommandStorage<U, E>>>,
+    guild_commands: Option<(&'a Guard<Arc<CommandStorage<U, E>>>, &'a Guard<Arc<HashMap<String, CommandOverride>>>)>,
     interaction: &'a serenity::CommandInteraction,
     interaction_type: crate::CommandInteractionType,
     has_sent_initial_response: &'a std::sync::atomic::AtomicBool,
@@ -85,6 +148,8 @@ pub async fn extract_command_and_run_checks<'a, U: Send + Sync + 'static, E>(
 ) -> Result<crate::ApplicationContext<'a, U, E>, crate::FrameworkError<'a, U, E>> {
     let ctx = extract_command(
         framework,
+        global_commands,
+        guild_commands,
         interaction,
         interaction_type,
         has_sent_initial_response,
@@ -159,6 +224,8 @@ async fn run_command<U: Send + Sync + 'static, E>(
 /// Dispatches this interaction onto framework commands, i.e. runs the associated command
 pub async fn dispatch_interaction<'a, U: Send + Sync + 'static, E>(
     framework: crate::FrameworkContext<'a, U, E>,
+    global_commands: &'a Guard<Arc<CommandStorage<U, E>>>,
+    guild_commands: Option<(&'a Guard<Arc<CommandStorage<U, E>>>, &'a Guard<Arc<HashMap<String, CommandOverride>>>)>,
     interaction: &'a serenity::CommandInteraction,
     // Need to pass this in from outside because of lifetime issues
     has_sent_initial_response: &'a std::sync::atomic::AtomicBool,
@@ -170,6 +237,8 @@ pub async fn dispatch_interaction<'a, U: Send + Sync + 'static, E>(
 ) -> Result<(), crate::FrameworkError<'a, U, E>> {
     let ctx = extract_command(
         framework,
+        global_commands,
+        guild_commands,
         interaction,
         crate::CommandInteractionType::Command,
         has_sent_initial_response,
@@ -245,6 +314,8 @@ async fn run_autocomplete<U: Send + Sync + 'static, E>(
 /// callback
 pub async fn dispatch_autocomplete<'a, U: Send + Sync + 'static, E>(
     framework: crate::FrameworkContext<'a, U, E>,
+    global_commands: &'a Guard<Arc<CommandStorage<U, E>>>,
+    guild_commands: Option<(&'a Guard<Arc<CommandStorage<U, E>>>, &'a Guard<Arc<HashMap<String, CommandOverride>>>)>,
     interaction: &'a serenity::CommandInteraction,
     // Need to pass the following in from outside because of lifetime issues
     has_sent_initial_response: &'a std::sync::atomic::AtomicBool,
@@ -254,6 +325,8 @@ pub async fn dispatch_autocomplete<'a, U: Send + Sync + 'static, E>(
 ) -> Result<(), crate::FrameworkError<'a, U, E>> {
     let ctx = extract_command(
         framework,
+        global_commands,
+        guild_commands,
         interaction,
         crate::CommandInteractionType::Autocomplete,
         has_sent_initial_response,

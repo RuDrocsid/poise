@@ -190,7 +190,7 @@ pub fn generate_slash_action(inv: &Invocation) -> Result<proc_macro2::TokenStrea
                 .unwrap_or_else(|| ctx.framework.options.manual_cooldowns);
 
             if is_framework_cooldown {
-                ctx.command.cooldowns.lock().unwrap().start_cooldown(ctx.cooldown_context());
+                ctx.command.cooldowns.lock().await.start_cooldown(ctx.cooldown_context());
             }
 
             inner(ctx.into(), #( #param_identifiers, )*)
@@ -223,7 +223,7 @@ pub fn generate_context_menu_action(
                     .unwrap_or_else(|| ctx.framework.options.manual_cooldowns);
 
                 if is_framework_cooldown {
-                    ctx.command.cooldowns.lock().unwrap().start_cooldown(ctx.cooldown_context());
+                    ctx.command.cooldowns.lock().await.start_cooldown(ctx.cooldown_context());
                 }
 
                 inner(ctx.into(), value)

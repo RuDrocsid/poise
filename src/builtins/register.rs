@@ -1,6 +1,7 @@
 //! Utilities for registering application commands
 
 use crate::serenity_prelude::{self as serenity, CollectComponentInteractions};
+use crate::CommandStorage;
 
 /// Collects all commands into a [`Vec<serenity::CreateCommand>`] builder, which can be used
 /// to register the commands on Discord
@@ -8,16 +9,17 @@ use crate::serenity_prelude::{self as serenity, CollectComponentInteractions};
 /// Also see [`register_application_commands_buttons`] for a ready to use register command
 ///
 /// ```rust,no_run
-/// # use poise::serenity_prelude as serenity;
+/// # use std::ops::Deref;
+/// use poise::serenity_prelude as serenity;
 /// # async fn foo(ctx: poise::Context<'_, (), ()>) -> Result<(), serenity::Error> {
 /// let commands = &ctx.framework().options().commands;
-/// let create_commands = poise::builtins::create_application_commands(commands);
+/// let create_commands = poise::builtins::create_application_commands(commands.deref_owned().deref());
 ///
 /// serenity::Command::set_global_commands(ctx.http(), &create_commands).await?;
 /// # Ok(()) }
 /// ```
 pub fn create_application_commands<U, E>(
-    commands: &[crate::Command<U, E>],
+    commands: &CommandStorage<U, E>,
 ) -> Vec<serenity::CreateCommand<'static>> {
     /// We decided to extract context menu commands recursively, despite the subcommand hierarchy
     /// not being preserved. Because it's more confusing to just silently discard context menu
@@ -30,13 +32,13 @@ pub fn create_application_commands<U, E>(
         if let Some(context_menu_command) = command.create_as_context_menu_command() {
             builder.push(context_menu_command);
         }
-        for subcommand in &command.subcommands {
+        for subcommand in command.subcommands.iter() {
             recursively_add_context_menu_commands(builder, subcommand);
         }
     }
 
     let mut commands_builder = Vec::with_capacity(commands.len());
-    for command in commands {
+    for command in commands.iter() {
         if let Some(slash_command) = command.create_as_slash_command() {
             commands_builder.push(slash_command);
         }
@@ -51,7 +53,7 @@ pub fn create_application_commands<U, E>(
 /// [`serenity::Command::set_global_commands`].
 pub async fn register_globally<U, E>(
     http: &serenity::Http,
-    commands: &[crate::Command<U, E>],
+    commands: &CommandStorage<U, E>,
 ) -> Result<(), serenity::Error> {
     let builder = create_application_commands(commands);
     serenity::Command::set_global_commands(http, &builder).await?;
@@ -64,7 +66,7 @@ pub async fn register_globally<U, E>(
 /// [`serenity::GuildId::set_commands`].
 pub async fn register_in_guild<U, E>(
     http: &serenity::Http,
-    commands: &[crate::Command<U, E>],
+    commands: &CommandStorage<U, E>,
     guild_id: serenity::GuildId,
 ) -> Result<(), serenity::Error> {
     let builder = create_application_commands(commands);
@@ -95,7 +97,7 @@ pub async fn register_application_commands<U: Send + Sync + 'static, E>(
         return Ok(());
     }
 
-    let commands_builder = create_application_commands(&ctx.framework().options().commands);
+    let commands_builder = create_application_commands(&ctx.framework().options().commands.deref_owned());
     let num_commands = commands_builder.len();
 
     if global {
@@ -142,7 +144,7 @@ pub async fn register_application_commands<U: Send + Sync + 'static, E>(
 ///     commands: vec![
 ///         // ...
 ///         register(),
-///     ],
+///     ].into(),
 /// #   ..Default::default()
 /// };
 /// ```
@@ -151,7 +153,7 @@ pub async fn register_application_commands<U: Send + Sync + 'static, E>(
 pub async fn register_application_commands_buttons<U: Send + Sync + 'static, E>(
     ctx: crate::Context<'_, U, E>,
 ) -> Result<(), serenity::Error> {
-    let create_commands = create_application_commands(&ctx.framework().options().commands);
+    let create_commands = create_application_commands(&ctx.framework().options().commands.deref_owned());
     let num_commands = create_commands.len();
 
     let is_bot_owner = ctx.framework().options().owners.contains(&ctx.author().id);

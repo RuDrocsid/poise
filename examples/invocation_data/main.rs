@@ -4,6 +4,7 @@
 //! This module has a test command which stores a dummy payload to check that this string is
 //! available in all phases of command execution
 
+use std::ops::Deref;
 use poise::serenity_prelude as serenity;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -53,7 +54,7 @@ pub async fn invocation_data_test(
 #[poise::command(prefix_command, owners_only)]
 async fn register_commands(ctx: Context<'_>) -> Result<(), Error> {
     let commands = &ctx.framework().options().commands;
-    poise::builtins::register_globally(ctx.http(), commands).await?;
+    poise::builtins::register_globally(ctx.http(), commands.deref_owned().deref()).await?;
 
     ctx.say("Successfully registered slash commands!").await?;
     Ok(())
@@ -111,7 +112,7 @@ async fn main() {
             })
         },
 
-        commands: vec![register_commands(), invocation_data_test()],
+        commands: vec![register_commands(), invocation_data_test()].into(),
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("~".into()),
             ..Default::default()

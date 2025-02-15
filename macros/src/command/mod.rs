@@ -1,9 +1,7 @@
 mod prefix;
 mod slash;
 
-use crate::util::{
-    iter_tuple_2_to_vec_map, wrap_option, wrap_option_and_map, wrap_option_to_string,
-};
+use crate::util::{iter_tuple_2_to_vec_map, wrap_option, wrap_option_and_map, wrap_option_to_normal_string, wrap_option_to_string};
 use proc_macro::TokenStream;
 use syn::spanned::Spanned as _;
 
@@ -47,6 +45,7 @@ pub struct CommandArgs {
     identifying_name: Option<String>,
     category: Option<String>,
     custom_data: Option<syn::Expr>,
+    command_id: Option<String>,
 
     manual_cooldowns: Option<bool>,
 
@@ -147,7 +146,7 @@ pub fn command(
             function.sig.span(),
             "command function must return Result<(), ...>",
         )
-        .into());
+            .into());
     }
 
     // Verify that at least one command type was enabled
@@ -339,9 +338,10 @@ fn generate_command(mut inv: Invocation) -> Result<proc_macro2::TokenStream, dar
     let parameters = slash::generate_parameters(&inv)?;
     let ephemeral = inv.args.ephemeral;
     let custom_data = match &inv.args.custom_data {
-        Some(custom_data) => quote::quote! { Box::new(#custom_data) },
-        None => quote::quote! { Box::new(()) },
+        Some(custom_data) => quote::quote! { ::std::sync::Arc::new(#custom_data) },
+        None => quote::quote! { ::std::sync::Arc::new(()) },
     };
+    let command_id = wrap_option_to_normal_string(inv.args.command_id);
 
     let name_localizations = iter_tuple_2_to_vec_map(inv.args.name_localized.into_iter());
     let description_localizations =
@@ -368,7 +368,7 @@ fn generate_command(mut inv: Invocation) -> Result<proc_macro2::TokenStream, dar
                 slash_action: #slash_action,
                 context_menu_action: #context_menu_action,
 
-                subcommands: vec![ #( #subcommands() ),* ],
+                subcommands: vec![ #( #subcommands() ),* ].into(),
                 subcommand_required: #subcommand_required,
                 name: Cow::Borrowed(#command_name),
                 name_localizations: #name_localizations,
@@ -381,7 +381,7 @@ fn generate_command(mut inv: Invocation) -> Result<proc_macro2::TokenStream, dar
                 help_text: #help_text,
                 hide_in_help: #hide_in_help,
                 manual_cooldowns: #manual_cooldowns,
-                cooldowns: std::sync::Mutex::new(::poise::Cooldowns::new()),
+                cooldowns: std::sync::Arc::new(tokio::sync::Mutex::new(::poise::Cooldowns::new())),
                 cooldown_config: #cooldown_config,
                 reuse_response: #reuse_response,
                 default_member_permissions: #default_member_permissions,
@@ -397,6 +397,7 @@ fn generate_command(mut inv: Invocation) -> Result<proc_macro2::TokenStream, dar
                 on_error: #on_error,
                 parameters: vec![ #( #parameters ),* ],
                 custom_data: #custom_data,
+                command_id: #command_id,
 
                 aliases: Cow::Borrowed(&[ #( Cow::Borrowed(#aliases), )* ]),
                 invoke_on_edit: #invoke_on_edit,
@@ -422,7 +423,7 @@ fn generate_cooldown_config(args: &CommandArgs) -> proc_macro2::TokenStream {
     ];
 
     if all_cooldowns.iter().all(Option::is_none) {
-        return quote::quote!(std::sync::RwLock::default());
+        return quote::quote!(::std::sync::Arc::new(::tokio::sync::RwLock::default()));
     }
 
     let to_seconds_path = quote::quote!(std::time::Duration::from_secs);
@@ -434,13 +435,13 @@ fn generate_cooldown_config(args: &CommandArgs) -> proc_macro2::TokenStream {
     let member_cooldown = wrap_option_and_map(args.member_cooldown, &to_seconds_path);
 
     quote::quote!(
-        std::sync::RwLock::new(::poise::CooldownConfig {
+        ::std::sync::Arc::new(::tokio::sync::RwLock::new(::poise::CooldownConfig {
             global: #global_cooldown,
             user: #user_cooldown,
             guild: #guild_cooldown,
             channel: #channel_cooldown,
             member: #member_cooldown,
             __non_exhaustive: ()
-        })
+        }))
     )
 }

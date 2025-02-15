@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use poise::serenity_prelude as serenity;
 
 type Data = (); // User data, which is stored and accessible in all command invocations
@@ -19,7 +20,7 @@ async fn age(
 #[poise::command(prefix_command, owners_only)]
 async fn register_commands(ctx: Context<'_>) -> Result<(), Error> {
     let commands = &ctx.framework().options().commands;
-    poise::builtins::register_globally(ctx.http(), commands).await?;
+    poise::builtins::register_globally(ctx.http(), commands.deref_owned().deref()).await?;
 
     ctx.say("Successfully registered slash commands!").await?;
     Ok(())
@@ -31,7 +32,7 @@ async fn main() {
     let intents = serenity::GatewayIntents::non_privileged();
 
     let options = poise::FrameworkOptions {
-        commands: vec![register_commands(), age()],
+        commands: vec![register_commands(), age()].into(),
         ..Default::default()
     };
 

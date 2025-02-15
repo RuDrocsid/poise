@@ -223,18 +223,40 @@ where
 /// An autocomplete function that can be used for the command parameter in your help function.
 ///
 /// See `examples/feature_showcase` for an example
-#[allow(clippy::unused_async)] // Required for the return type
 pub async fn autocomplete_command<'a, U: Send + Sync + 'static, E>(
     ctx: crate::Context<'a, U, E>,
     partial: &'a str,
 ) -> serenity::CreateAutocompleteResponse<'a> {
-    let commands = ctx.framework().options.commands.iter();
-    let filtered_commands = commands
-        .filter(|cmd| cmd.name.starts_with(partial))
-        .take(25);
+    let lock = ctx.framework().options.commands.deref_owned();
 
-    let choices: Vec<_> = filtered_commands
-        .map(|cmd| serenity::AutocompleteChoice::from(cmd.name.as_ref()))
+    if let Some(guild_id) = ctx.guild_id() {
+        let guild_commands_guard = ctx.framework().options.guild_commands.read().await;
+        if let Some(guild_commands) = guild_commands_guard.get(&guild_id) {
+            let override_lock = guild_commands.1.deref_owned();
+            let choices: Vec<_> = lock
+                .iter()
+                .chain(guild_commands.0.deref_owned().iter())
+                .filter(|c| {
+                    if let Some(ovrd) = c
+                        .command_id
+                        .as_ref()
+                        .and_then(|id| override_lock.get(id)) {
+                        return !(ovrd.disabled || ovrd.group_disabled) && c.name.starts_with(partial);
+                    }
+                    c.name.starts_with(partial)
+                })
+                .take(25)
+                .map(|cmd| serenity::AutocompleteChoice::from(cmd.name.to_owned()))
+                .collect();
+            return serenity::CreateAutocompleteResponse::new().set_choices(choices);
+        }
+    }
+
+    let choices: Vec<_> = lock
+        .iter()
+        .filter(|cmd| cmd.name.starts_with(partial))
+        .take(25)
+        .map(|cmd| serenity::AutocompleteChoice::from(cmd.name.to_owned()))
         .collect();
 
     serenity::CreateAutocompleteResponse::new().set_choices(choices)

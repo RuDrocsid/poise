@@ -1,6 +1,10 @@
 //! Dispatches incoming messages and message edits onto framework commands
 
-use crate::serenity_prelude as serenity;
+use std::collections::HashMap;
+use crate::{serenity_prelude as serenity, CommandOverride, CommandStorage};
+use arc_swap::Guard;
+use std::ops::Deref;
+use std::sync::Arc;
 
 /// Checks if this message is a bot invocation by attempting to strip the prefix
 ///
@@ -108,36 +112,40 @@ async fn strip_prefix<'a, U: Send + Sync + 'static, E>(
 /// subcommands.
 ///
 /// ```rust
+/// use std::collections::HashMap;
+///
 /// #[poise::command(prefix_command)]
 /// async fn command1(ctx: poise::Context<'_, (), ()>) -> Result<(), ()> { Ok(()) }
 /// #[poise::command(prefix_command, subcommands("command3"))]
 /// async fn command2(ctx: poise::Context<'_, (), ()>) -> Result<(), ()> { Ok(()) }
 /// #[poise::command(prefix_command)]
 /// async fn command3(ctx: poise::Context<'_, (), ()>) -> Result<(), ()> { Ok(()) }
-/// let commands = vec![command1(), command2()];
+/// let commands = vec![command1(), command2()].into();
 ///
 /// let mut parent_commands = Vec::new();
+/// let empty_map = HashMap::new();
 /// assert_eq!(
-///     poise::find_command(&commands, "command1 my arguments", false, &mut parent_commands),
+///     poise::find_command(&commands, &empty_map, "command1 my arguments", false, &mut parent_commands),
 ///     Some((&commands[0], "command1", "my arguments")),
 /// );
 /// assert!(parent_commands.is_empty());
 ///
 /// parent_commands.clear();
 /// assert_eq!(
-///     poise::find_command(&commands, "command2 command3 my arguments", false, &mut parent_commands),
+///     poise::find_command(&commands, &empty_map, "command2 command3 my arguments", false, &mut parent_commands),
 ///     Some((&commands[1].subcommands[0], "command3", "my arguments")),
 /// );
 /// assert_eq!(&parent_commands, &[&commands[1]]);
 ///
 /// parent_commands.clear();
 /// assert_eq!(
-///     poise::find_command(&commands, "CoMmAnD2 cOmMaNd99 my arguments", true, &mut parent_commands),
+///     poise::find_command(&commands, &empty_map, "CoMmAnD2 cOmMaNd99 my arguments", true, &mut parent_commands),
 ///     Some((&commands[1], "CoMmAnD2", "cOmMaNd99 my arguments")),
 /// );
 /// assert!(parent_commands.is_empty());
 pub fn find_command<'a, U, E>(
-    commands: &'a [crate::Command<U, E>],
+    commands: &'a CommandStorage<U, E>,
+    overrides: &HashMap<String, CommandOverride>,
     remaining_message: &'a str,
     case_insensitive: bool,
     parent_commands: &mut Vec<&'a crate::Command<U, E>>,
@@ -152,12 +160,30 @@ pub fn find_command<'a, U, E>(
         let mut iter = remaining_message.splitn(2, char::is_whitespace);
         (iter.next().unwrap(), iter.next().unwrap_or("").trim_start())
     };
+    let default_override = CommandOverride::default();
 
-    for command in commands {
+    for command in commands.iter() {
+        let command_override = command
+            .command_id
+            .as_ref()
+            .and_then(|id| overrides.get(id))
+            .unwrap_or(&default_override);
+        if command_override.disabled || command_override.group_disabled {
+            continue;
+        }
+        
         let primary_name_matches = string_equal(&command.name, command_name);
         let alias_matches = command
             .aliases
             .iter()
+            .filter(|a| command_override.changed_aliases.get(&a.to_string()) != Some(&false))
+            .map(|a| a.deref())
+            .chain(
+                command_override
+                    .changed_aliases
+                    .iter()
+                    .filter_map(|(a, b)| if *b { Some(a.deref()) } else { None }),
+            )
             .any(|alias| string_equal(alias, command_name));
         if !primary_name_matches && !alias_matches {
             continue;
@@ -167,6 +193,7 @@ pub fn find_command<'a, U, E>(
         return Some(
             find_command(
                 &command.subcommands,
+                overrides,
                 remaining_message,
                 case_insensitive,
                 parent_commands,
@@ -184,13 +211,23 @@ pub fn find_command<'a, U, E>(
 /// Manually dispatches a message with the prefix framework
 pub async fn dispatch_message<'a, U: Send + Sync + 'static, E>(
     framework: crate::FrameworkContext<'a, U, E>,
+    global_commands: &'a Guard<Arc<CommandStorage<U, E>>>,
+    guild_commands: Option<(&'a Guard<Arc<CommandStorage<U, E>>>, &'a Guard<Arc<HashMap<String, CommandOverride>>>)>,
     msg: &'a serenity::Message,
     trigger: crate::MessageDispatchTrigger,
     invocation_data: &'a tokio::sync::Mutex<Box<dyn std::any::Any + Send + Sync>>,
     parent_commands: &'a mut Vec<&'a crate::Command<U, E>>,
 ) -> Result<(), crate::FrameworkError<'a, U, E>> {
-    if let Some(ctx) =
-        parse_invocation(framework, msg, trigger, invocation_data, parent_commands).await?
+    if let Some(ctx) = parse_invocation(
+        framework,
+        global_commands,
+        guild_commands,
+        msg,
+        trigger,
+        invocation_data,
+        parent_commands,
+    )
+    .await?
     {
         crate::catch_unwind_maybe(run_invocation(ctx))
             .await
@@ -218,6 +255,8 @@ pub async fn dispatch_message<'a, U: Send + Sync + 'static, E>(
 /// fully parsed.
 pub async fn parse_invocation<'a, U: Send + Sync + 'static, E>(
     framework: crate::FrameworkContext<'a, U, E>,
+    global_commands: &'a Guard<Arc<CommandStorage<U, E>>>,
+    guild_commands: Option<(&'a Guard<Arc<CommandStorage<U, E>>>, &'a Guard<Arc<HashMap<String, CommandOverride>>>)>,
     msg: &'a serenity::Message,
     trigger: crate::MessageDispatchTrigger,
     invocation_data: &'a tokio::sync::Mutex<Box<dyn std::any::Any + Send + Sync>>,
@@ -249,20 +288,42 @@ pub async fn parse_invocation<'a, U: Send + Sync + 'static, E>(
     };
     let msg_content = msg_content.trim_start();
 
-    let (command, invoked_command_name, args) = find_command(
-        &framework.options.commands,
-        msg_content,
-        framework.options.prefix_options.case_insensitive_commands,
-        parent_commands,
-    )
-    .ok_or(crate::FrameworkError::UnknownCommand {
-        msg,
-        prefix,
-        msg_content,
-        framework,
-        invocation_data,
-        trigger,
-    })?;
+    // check guild commands first
+    // if no result: check global commands
+    // if no result: error
+    // These variables are needed to store the guild overrides for checking the global commands.
+    let guild_overrides = HashMap::new();
+    let mut borrowed_guild_overrides = &guild_overrides;
+    let (command, invoked_command_name, args) = guild_commands
+        .clone()
+        .map(|(cmds, overrides)| {
+            borrowed_guild_overrides = overrides;
+            find_command(
+                cmds.deref(),
+                overrides,
+                msg_content,
+                framework.options.prefix_options.case_insensitive_commands,
+                parent_commands,
+            )
+        })
+        .unwrap_or_else(|| {
+            parent_commands.clear();
+            find_command(
+                global_commands.deref().deref(),
+                borrowed_guild_overrides,
+                msg_content,
+                framework.options.prefix_options.case_insensitive_commands,
+                parent_commands,
+            )
+        })
+        .ok_or(crate::FrameworkError::UnknownCommand {
+            msg,
+            prefix,
+            msg_content,
+            framework,
+            invocation_data,
+            trigger,
+        })?;
 
     let action = match command.prefix_action {
         Some(x) => x,
@@ -281,6 +342,8 @@ pub async fn parse_invocation<'a, U: Send + Sync + 'static, E>(
         invocation_data,
         trigger,
         action,
+        global_commands: Some(global_commands),
+        guild_commands,
         __non_exhaustive: (),
     }))
 }
